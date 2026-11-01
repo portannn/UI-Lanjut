@@ -1,18 +1,18 @@
 <script setup>
-import AppCard from '@/components/ui/AppCard.vue';
+import AppCard from '@/components/ui/AppCard.vue'
 
 defineProps({
   event: {
     type: Object,
-    required: true
+    required: true,
   },
   isCompleted: {
     type: Boolean,
-    default: false
-  }
-});
+    default: false,
+  },
+})
 
-defineEmits(['view-detail', 'complete', 'delete']);
+defineEmits(['view-detail', 'complete', 'delete'])
 </script>
 
 <template>
@@ -40,9 +40,7 @@ defineEmits(['view-detail', 'complete', 'delete']);
         <button class="btn-action btn-complete" @click="$emit('complete', event)">
           ✅ Complete Event
         </button>
-        <button class="btn-action btn-delete" @click="$emit('delete', event)">
-          🗑️ Delete
-        </button>
+        <button class="btn-action btn-delete" @click="$emit('delete', event)">🗑️ Delete</button>
       </template>
 
       <template v-else>
