@@ -1,65 +1,90 @@
 <script setup>
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { useEvents } from '@/composables/useEvents';
-import AppModal from '@/components/ui/AppModal.vue';
-import AppButton from '@/components/ui/AppButton.vue';
-import OrganizerEventCard from '@/components/event/OrganizerEventCard.vue';
-import EventCreateForm from '@/components/event/EventCreateForm.vue';
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useEvents } from '@/composables/useEvents'
+import AppModal from '@/components/ui/AppModal.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import OrganizerEventCard from '@/components/event/OrganizerEventCard.vue'
+import EventCreateForm from '@/components/event/EventCreateForm.vue'
 
-const router = useRouter();
+const router = useRouter()
 const {
   activeEvents,
   completedEvents,
   createEvent,
   completeEvent,
-  deleteEvent
-} = useEvents();
+  deleteEvent,
+  fetchEvents,
+  loading,
+  error,
+} = useEvents()
 
 // KONDISI TAB AKTIF: 'active' | 'create' | 'completed'
-const currentTab = ref('active');
+const currentTab = ref('active')
 
 // MODAL STATE FOR ACTIONS (Complete & Delete)
-const isModalOpen = ref(false);
-const modalAction = ref('complete'); // 'complete' | 'delete'
-const selectedEvent = ref(null);
+const isModalOpen = ref(false)
+const modalAction = ref('complete') // 'complete' | 'delete'
+const selectedEvent = ref(null)
+const isProcessingAction = ref(false)
+
+const createFormRef = ref(null)
+const isSubmitting = ref(false)
+
+// Ambil data event dari server saat halaman manajemen dibuka
+onMounted(() => {
+  fetchEvents()
+})
 
 const handleOpenCompleteModal = (event) => {
-  selectedEvent.value = event;
-  modalAction.value = 'complete';
-  isModalOpen.value = true;
-};
+  selectedEvent.value = event
+  modalAction.value = 'complete'
+  isModalOpen.value = true
+}
 
 const handleOpenDeleteModal = (event) => {
-  selectedEvent.value = event;
-  modalAction.value = 'delete';
-  isModalOpen.value = true;
-};
+  selectedEvent.value = event
+  modalAction.value = 'delete'
+  isModalOpen.value = true
+}
 
-const handleConfirmModal = () => {
+const handleConfirmModal = async () => {
   if (selectedEvent.value) {
-    if (modalAction.value === 'complete') {
-      completeEvent(selectedEvent.value.id);
-    } else if (modalAction.value === 'delete') {
-      deleteEvent(selectedEvent.value.id);
+    isProcessingAction.value = true
+    try {
+      if (modalAction.value === 'complete') {
+        await completeEvent(selectedEvent.value.id)
+      } else if (modalAction.value === 'delete') {
+        await deleteEvent(selectedEvent.value.id)
+      }
+    } finally {
+      isProcessingAction.value = false
+      isModalOpen.value = false
+      selectedEvent.value = null
     }
-    isModalOpen.value = false;
-    selectedEvent.value = null;
   }
-};
+}
 
 const handleCancelModal = () => {
-  isModalOpen.value = false;
-  selectedEvent.value = null;
-};
+  isModalOpen.value = false
+  selectedEvent.value = null
+}
 
-// HANDLER EVENT DIBUAT DARI EventCreateForm
-const handleCreateEvent = (eventData) => {
-  createEvent(eventData);
-  setTimeout(() => {
-    currentTab.value = 'active';
-  }, 1000);
-};
+// HANDLER EVENT DIBUAT DARI EventCreateForm SECARA ASINKRON (POST KE REST API)
+const handleCreateEvent = async (eventData) => {
+  isSubmitting.value = true
+  try {
+    await createEvent(eventData)
+    if (createFormRef.value) {
+      createFormRef.value.resetForm()
+    }
+    currentTab.value = 'active'
+  } catch (err) {
+    alert(err.message || 'Gagal menyimpan acara ke server REST API')
+  } finally {
+    isSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -69,23 +94,15 @@ const handleCreateEvent = (eventData) => {
         <h2>Event Management Control</h2>
         <p class="subtitle">Manage event lifecycle, publish new events, and archive completed ones.</p>
       </div>
-      <AppButton variant="primary" @click="currentTab = 'create'">
-        ➕ Create New Event
-      </AppButton>
+      <AppButton variant="primary" @click="currentTab = 'create'">➕ Create New Event</AppButton>
     </div>
 
     <!-- TAB NAVIGATION SYSTEM -->
     <div class="tabs-container">
-      <button
-        :class="['tab-btn', { active: currentTab === 'active' }]"
-        @click="currentTab = 'active'"
-      >
+      <button :class="['tab-btn', { active: currentTab === 'active' }]" @click="currentTab = 'active'">
         ⚡ Active Events ({{ activeEvents.length }})
       </button>
-      <button
-        :class="['tab-btn', { active: currentTab === 'create' }]"
-        @click="currentTab = 'create'"
-      >
+      <button :class="['tab-btn', { active: currentTab === 'create' }]" @click="currentTab = 'create'">
         ➕ Create Event
       </button>
       <button
@@ -111,7 +128,7 @@ const handleCreateEvent = (eventData) => {
 
       <!-- EMPTY STATE ACTIVE -->
       <div v-else class="empty-state">
-        <div class="empty-icon">📭</div>
+        <div class="empty-icon">📦</div>
         <h3>No Active Events</h3>
         <p>All events have ended or none have been created yet. Please create a new event.</p>
         <AppButton variant="primary" @click="currentTab = 'create'">Create Event Now</AppButton>
@@ -121,6 +138,8 @@ const handleCreateEvent = (eventData) => {
     <!-- TAB 2: CREATE EVENT FORM -->
     <section v-if="currentTab === 'create'" class="tab-pane">
       <EventCreateForm
+        ref="createFormRef"
+        :submitting="isSubmitting"
         @submit="handleCreateEvent"
         @cancel="currentTab = 'active'"
       />
@@ -150,9 +169,11 @@ const handleCreateEvent = (eventData) => {
     <AppModal
       :is-open="isModalOpen"
       :title="modalAction === 'complete' ? 'Complete Event?' : 'Delete Event Permanently?'"
-      :message="modalAction === 'complete'
-        ? `Are you sure you want to mark '${selectedEvent?.title}' as completed? Once completed, the status is final and the event will be automatically removed from public listings.`
-        : `Are you sure you want to permanently delete '${selectedEvent?.title}'? This action cannot be undone and will permanently remove this event from all records.`"
+      :message="
+        modalAction === 'complete'
+          ? `Are you sure you want to mark '${selectedEvent?.title}' as completed? Once completed, the status is final and the event will be automatically removed from public listings.`
+          : `Are you sure you want to permanently delete '${selectedEvent?.title}'? This action cannot be undone and will permanently remove this event from all records.`
+      "
       :confirm-text="modalAction === 'complete' ? 'Yes, Complete' : 'Yes, Delete Permanently'"
       cancel-text="Cancel"
       @confirm="handleConfirmModal"
@@ -226,7 +247,6 @@ const handleCreateEvent = (eventData) => {
   margin-bottom: var(--space-12);
 }
 
-/* EMPTY STATE */
 .empty-state {
   text-align: center;
   padding: var(--space-12);
